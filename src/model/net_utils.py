@@ -12,7 +12,7 @@ def attention(query, key, value, mask=None, dropout_fn=None):
         query (Tensor): Query matrix -> [batch_size, num_head, hidden, d_k]
         key (Tensor): Key matrix -> [batch_size, num_head, hidden, d_k]
         value (Tensor): Value matrix -> [batch_size, num_head, hidden, d_k]
-        mask (Tensor):
+        mask (Tensor): Mask tensor which blocks calculating loss
         dropout_fn (nn.Module): Dropout function
 
     Returns:

@@ -141,6 +141,7 @@ def get_loader(tok, batch_size, root_path, workers, max_len, mode, distributed=F
 
 
 def cache_processed_data(tokenizer, root_pth, cached_pth, mode):
+    """Convert csv into jsonl"""
     os.makedirs(os.path.join(root_pth, "cached/"), exist_ok=True)
 
     # load raw data
