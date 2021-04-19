@@ -2,11 +2,14 @@ import glob
 import os
 
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from transformers import BertTokenizer
 
 from config import load_config
 from dataset import get_loader
+from model.net import Transformer
 from trainer import Trainer
 from utils import ResultWriter, fix_seed
 
@@ -24,27 +27,43 @@ def main(rank, hparams, ngpus_per_node: int):
             rank=hparams.rank,
         )
 
-    # get dataloaders
-    loaders = [
-        get_loader(
-            batch_size=hparams.batch_size,
-            path=hparams.root_path,
-            workers=hparams.workers,
-            mode=mode,
-            distributed=hparams.distributed,
-        )
-        for mode in ["train", "dev", "test"]
-    ]
-
-    # get model
+    # get shared tokenizer and vocab
     if hparams.distributed:
         if rank != 0:
             dist.barrier()
-        model = None
+        tok = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
         if rank == 0:
             dist.barrier()
     else:
-        model = None
+        tok = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+
+    # get dataloaders
+    loaders = [
+        get_loader(
+            tok=tok,
+            batch_size=hparams.batch_size,
+            root_path=hparams.root_path,
+            workers=hparams.workers,
+            max_len=hparams.max_len,
+            mode=mode,
+            distributed=hparams.distributed,
+        )
+        for mode in ["train", "valid", "test"]
+    ]
+
+    # get model and initialize
+    model = Transformer(
+        vocab_size=len(tok.vocab),
+        num_enc_block=hparams.n_enc_block,
+        num_dec_block=hparams.n_dec_block,
+        num_head=hparams.num_head,
+        hidden=hparams.hidden,
+        fc_hidden=hparams.fc_hidden,
+        dropout=hparams.dropout,
+    )
+    for param in model.parameters():
+        if param.dim() > 1:
+            nn.init.xavier_uniform_(param)
 
     # training phase
     trainer = Trainer(hparams, loaders, model, resultwriter)

@@ -9,11 +9,12 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-import torch.utils as torch_utils
+import torch.nn.utils as torch_utils
 import yaml
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
+from transformers import AdamW, get_cosine_schedule_with_warmup
 
 from utils import AverageMeter
 
@@ -45,6 +46,11 @@ class Trainer:
         self.train_sampler = self.train_loader.sampler
 
         # optimizer, scheduler
+        self.step_total = (
+            len(self.train_loader)
+            // self.gradient_accumulation_step
+            * self.hparams.epoch
+        )
         self.optimizer, self.scheduler = self.configure_optimizers()
 
         # metric
@@ -52,7 +58,11 @@ class Trainer:
 
         # model saving options
         self.global_step = 0
-        self.eval_step = int(self.step_total * hparams.eval_ratio)
+        self.eval_step = (
+            int(self.step_total * hparams.eval_ratio)
+            if hparams.eval_ratio > 0
+            else self.step_total // hparams.batch_size
+        )
         if self.main_process:
             self.version = 0
             while True:
@@ -66,13 +76,6 @@ class Trainer:
                     self.version += 1
             self.summarywriter = SummaryWriter(self.save_path)
             self.global_val_loss = float("inf")
-            self.log_step = hparams.log_step
-            logging.basicConfig(
-                filename=os.path.join(self.save_path, "experiment.log"),
-                level=logging.INFO,
-                format="%(asctime)s > %(message)s",
-                datefmt="%Y-%m-%d %I:%M:%S %p %Z",
-            )
             with open(
                 os.path.join(self.save_path, "hparams.yaml"), "w", encoding="utf8"
             ) as outfile:
@@ -82,15 +85,49 @@ class Trainer:
 
             # experiment logging options
             self.best_result = {"version": self.version}
+            self.log_step = hparams.log_step
+            logging.basicConfig(
+                filename=os.path.join(self.save_path, "experiment.log"),
+                level=logging.INFO,
+                format="%(asctime)s > %(message)s",
+                datefmt="%Y-%m-%d %I:%M:%S %p %Z",
+            )
+            logging.info(
+                f"[SCHEDULER] Total_step: {self.step_total} | Warmup step: {self.warmup_steps} | Accumulation step: {self.gradient_accumulation_step}"
+            )
 
     def configure_optimizers(self):
         # optimizer
-        optimizer = None
+        optimizer = optim.AdamW(
+            self.model.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.weight_decay,
+        )
 
-        # lr warmup scheduler (optional)
-        scheduler = None
+        # lr warmup scheduler
+        self.warmup_steps = math.ceil(self.step_total * self.hparams.warmup_ratio)
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.warmup_steps,
+            num_training_steps=self.step_total,
+        )
 
         return optimizer, scheduler
+
+    def get_parameter_names(self, model, forbidden_layer_types):
+        """
+        Returns the names of the model parameters that are not inside a forbidden layer.
+        """
+        result = []
+        for name, child in model.named_children():
+            result += [
+                f"{name}.{n}"
+                for n in self.get_parameter_names(child, forbidden_layer_types)
+                if not isinstance(child, tuple(forbidden_layer_types))
+            ]
+        # Add model specific parameters (defined with nn.Parameter) since they are not in any child.
+        result += list(model._parameters.keys())
+        return result
 
     def save_checkpoint(self, epoch: int, val_loss: float, model: nn.Module) -> None:
         logging.info(
@@ -106,14 +143,16 @@ class Trainer:
         self.global_val_loss = val_loss
 
     def fit(self) -> dict:
+        # this zero gradient update is needed to avoid a warning message in warmup setting
+        self.optimizer.zero_grad()
+        self.optimizer.step()
+
         for epoch in tqdm(
             range(self.hparams.epoch), desc="epoch", disable=not self.main_process
         ):
             if self.hparams.distributed:
                 self.train_sampler.set_epoch(epoch)
-
             self._train_epoch(epoch)
-            self.scheduler.step()  # TODO: scheduler position depends on warmup
 
         if self.main_process:
             self.summarywriter.close()
@@ -129,16 +168,29 @@ class Trainer:
             total=len(self.train_loader),
             disable=not self.main_process,
         ):
-            data, label = map(lambda x: x.to(self.device), batch)
+            """
+            Dimensions:
+                src: [batch_size, max_len]
+                tgt: [batch_size, max_len]
+                src_mask: [batch_size, 1, max_len]
+                src: [batch_size, 1, max_len, max_len]
+            """
+            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
 
             # compute loss
             if self.hparams.amp:
                 with torch.cuda.amp.autocast():
-                    logit = self.model(data)
-                    loss = self.ce_loss(logit, label)
+                    logit = self.model(src, tgt, src_mask, tgt_mask)
+                    loss = self.criterion(
+                        logit.contiguous().view(-1, logit.shape[-1]),
+                        tgt.contiguous().view(-1),
+                    )
             else:
-                logit = self.model(data)
-                loss = self.ce_loss(logit, label)
+                logit = self.model(src, tgt, src_mask, tgt_mask)
+                loss = self.criterion(
+                    logit.contiguous().view(-1, logit.shape[-1]),
+                    tgt.contiguous().view(-1),
+                )
             loss = loss / self.gradient_accumulation_step
 
             # update
@@ -150,6 +202,7 @@ class Trainer:
                         self.model.parameters(), self.max_grad_norm
                     )
                     self.scaler.step(self.optimizer)
+                    self.scheduler.step()
                     self.scaler.update()
                     self.optimizer.zero_grad()
                     self.global_step += 1
@@ -160,6 +213,7 @@ class Trainer:
                         self.model.parameters(), self.max_grad_norm
                     )
                     self.optimizer.step()
+                    self.scheduler.step()
                     self.optimizer.zero_grad()
                     self.global_step += 1
 
@@ -182,7 +236,7 @@ class Trainer:
 
             # train logging
             if self.main_process:
-                if (self.global_step + 1) % self.log_step == 0:
+                if self.global_step != 0 and self.global_step % self.log_step == 0:
                     logging.info(
                         f"[TRN] Version: {self.version} | Epoch: {epoch} | Global step: {self.global_step} | Train loss: {loss.item():.3f} | LR: {self.optimizer.param_groups[0]['lr']:.5f}"
                     )
@@ -206,12 +260,14 @@ class Trainer:
             total=len(self.valid_loader),
             disable=not self.main_process,
         ):
-            data, label = map(lambda x: x.to(self.device), batch)
+            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
 
             # compute loss
-            logit = self.model(data)
-            loss = self.ce_loss(logit, label)
-
+            logit = self.model(src, tgt, src_mask, tgt_mask)
+            loss = self.criterion(
+                logit.contiguous().view(-1, logit.shape[-1]),
+                tgt.contiguous().view(-1),
+            )
             val_loss.update(loss.item())
 
         return val_loss.avg
@@ -225,14 +281,15 @@ class Trainer:
         for step, batch in tqdm(
             enumerate(self.test_loader), desc="tst_steps", total=len(self.test_loader)
         ):
-            data, label = map(lambda x: x.to(self.device), batch)
+            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
 
             # compute loss
-            logit = self.model(data)
-            loss = self.ce_loss(logit, label)
-
+            logit = self.model(src, tgt, src_mask, tgt_mask)
+            loss = self.criterion(
+                logit.contiguous().view(-1, logit.shape[-1]),
+                tgt.contiguous().view(-1),
+            )
             test_loss.update(loss.item())
 
         logging.info(f"[TST] Test Loss: {test_loss.avg:.4f}")
-
         return {"test_loss": test_loss.avg}

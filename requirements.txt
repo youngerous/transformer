@@ -1,0 +1,10 @@
+numpy==1.19.2
+pandas==1.1.5
+transformers==4.5.1
+torch==1.7.1
+openpyxl==3.0.7
+xlrd==2.0.1
+ipywidgets==7.6.3
+sklearn==0.23.2
+jsonlines==2.0.0
+pyyaml==5.4.1
