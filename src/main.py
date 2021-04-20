@@ -66,7 +66,7 @@ def main(rank, hparams, ngpus_per_node: int):
             nn.init.xavier_uniform_(param)
 
     # training phase
-    trainer = Trainer(hparams, loaders, model, resultwriter)
+    trainer = Trainer(hparams, loaders, model, resultwriter, pad_idx=tok.pad_token_id)
     best_result = trainer.fit()
 
     # testing phase

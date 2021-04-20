@@ -39,13 +39,38 @@ class TranslationDataset(Dataset):
             self.dset.append(json.loads(json_str))
         print(f"Load {len(self.dset)} {mode} sample")
 
-    def add_pad(self, indice: List[int]) -> List[int]:
+    def add_src_pad(self, indice: List[int]) -> torch.Tensor:
         diff = self.max_len - len(indice)
         if diff > 0:
             indice += [self.pad_idx] * diff
         else:
             indice = indice[: self.max_len - 1] + [self.eos_idx]
-        return indice
+        return torch.tensor(indice)
+
+    def add_tgt_pad(self, indice: List[int]) -> Tuple[torch.Tensor]:
+        """
+        Example:
+            indice: <s> I am happy </s>
+            t_input: <s> I am happy
+            t_label: I am happy </s>
+        """
+        t_input, t_label = indice[:-1], indice[1:]
+
+        # pad for tgt input
+        input_diff = self.max_len - len(t_input)
+        if input_diff > 0:
+            t_input += [self.pad_idx] * input_diff
+        else:
+            t_input = t_input[: self.max_len - 1] + [self.eos_idx]
+
+        # pad for tgt label
+        label_diff = self.max_len - len(t_label)
+        if label_diff > 0:
+            t_label += [self.pad_idx] * label_diff
+        else:
+            t_label = t_label[: self.max_len - 1] + [self.eos_idx]
+
+        return torch.tensor(t_input), torch.tensor(t_label)
 
     def get_src_mask(self, indice: torch.Tensor) -> torch.Tensor:
         return (indice != self.pad_idx).unsqueeze(-2)
@@ -65,24 +90,25 @@ class TranslationDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor]:
         # there are special tokens, which are used in BERT, so we remove them in src
-        # [SEP] token in tgt will be used as <eos> token
+        # [CLS], [SEP] token in tgt will be used as <s>, </s> tokens respectively
         src = self.dset[idx]["src"][1:-1]
-        tgt = self.dset[idx]["tgt"][1:]
+        tgt = self.dset[idx]["tgt"]
 
         # add pad token
-        src = torch.tensor(self.add_pad(src))
-        tgt = torch.tensor(self.add_pad(tgt))
+        src = self.add_src_pad(src)
+        tgt_input, tgt_label = self.add_tgt_pad(tgt)
 
         # get masking vector
         src_mask = self.get_src_mask(src)
-        tgt_mask = self.get_tgt_mask(tgt)
+        tgt_mask = self.get_tgt_mask(tgt_input)
 
         assert len(src) == self.max_len
-        assert len(tgt) == self.max_len
+        assert len(tgt_input) == self.max_len
+        assert len(tgt_label) == self.max_len
         assert len(src_mask[0]) == self.max_len
         assert len(tgt_mask[0]) == self.max_len
 
-        return src, tgt, src_mask, tgt_mask
+        return src, tgt_input, tgt_label, src_mask, tgt_mask
 
 
 def get_loader(tok, batch_size, root_path, workers, max_len, mode, distributed=False):

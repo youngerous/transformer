@@ -20,7 +20,7 @@ from utils import AverageMeter
 
 
 class Trainer:
-    def __init__(self, hparams, loaders, model, resultwriter):
+    def __init__(self, hparams, loaders, model, resultwriter, pad_idx):
         self.hparams = hparams
         self.rank: int = self.hparams.rank
         self.main_process: bool = self.rank in [-1, 0]
@@ -54,14 +54,14 @@ class Trainer:
         self.optimizer, self.scheduler = self.configure_optimizers()
 
         # metric
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
 
         # model saving options
         self.global_step = 0
         self.eval_step = (
             int(self.step_total * hparams.eval_ratio)
             if hparams.eval_ratio > 0
-            else self.step_total // hparams.batch_size
+            else self.step_total // hparams.epoch
         )
         if self.main_process:
             self.version = 0
@@ -171,25 +171,28 @@ class Trainer:
             """
             Dimensions:
                 src: [batch_size, max_len]
-                tgt: [batch_size, max_len]
+                tgt_input: [batch_size, max_len]
+                tgt_label: [batch_size, max_len]
                 src_mask: [batch_size, 1, max_len]
-                src: [batch_size, 1, max_len, max_len]
+                tgt_mask: [batch_size, 1, max_len, max_len]
             """
-            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
+            src, tgt_input, tgt_label, src_mask, tgt_mask = map(
+                lambda x: x.to(self.device), batch
+            )
 
             # compute loss
             if self.hparams.amp:
                 with torch.cuda.amp.autocast():
-                    logit = self.model(src, tgt, src_mask, tgt_mask)
+                    logit = self.model(src, tgt_input, src_mask, tgt_mask)
                     loss = self.criterion(
                         logit.contiguous().view(-1, logit.shape[-1]),
-                        tgt.contiguous().view(-1),
+                        tgt_label.contiguous().view(-1),
                     )
             else:
-                logit = self.model(src, tgt, src_mask, tgt_mask)
+                logit = self.model(src, tgt_input, src_mask, tgt_mask)
                 loss = self.criterion(
                     logit.contiguous().view(-1, logit.shape[-1]),
-                    tgt.contiguous().view(-1),
+                    tgt_label.contiguous().view(-1),
                 )
             loss = loss / self.gradient_accumulation_step
 
@@ -260,13 +263,15 @@ class Trainer:
             total=len(self.valid_loader),
             disable=not self.main_process,
         ):
-            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
+            src, tgt_input, tgt_label, src_mask, tgt_mask = map(
+                lambda x: x.to(self.device), batch
+            )
 
             # compute loss
-            logit = self.model(src, tgt, src_mask, tgt_mask)
+            logit = self.model(src, tgt_input, src_mask, tgt_mask)
             loss = self.criterion(
                 logit.contiguous().view(-1, logit.shape[-1]),
-                tgt.contiguous().view(-1),
+                tgt_label.contiguous().view(-1),
             )
             val_loss.update(loss.item())
 
@@ -281,13 +286,15 @@ class Trainer:
         for step, batch in tqdm(
             enumerate(self.test_loader), desc="tst_steps", total=len(self.test_loader)
         ):
-            src, tgt, src_mask, tgt_mask = map(lambda x: x.to(self.device), batch)
+            src, tgt_input, tgt_label, src_mask, tgt_mask = map(
+                lambda x: x.to(self.device), batch
+            )
 
             # compute loss
-            logit = self.model(src, tgt, src_mask, tgt_mask)
+            logit = self.model(src, tgt_input, src_mask, tgt_mask)
             loss = self.criterion(
                 logit.contiguous().view(-1, logit.shape[-1]),
-                tgt.contiguous().view(-1),
+                tgt_label.contiguous().view(-1),
             )
             test_loss.update(loss.item())
 
