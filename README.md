@@ -2,7 +2,7 @@
 This is PyTorch implementation of [Attention is All You Need](https://arxiv.org/abs/1706.03762) (NeurIPS 2017). 
 
 ## Overview
-![arch](assets/architecture.jpg)
+![arch](assets/architecture.png)
 
 - Task: Neural Machine Translation (Korean → English)
 - Dataset: 한국어-영어 번역(병렬) 말뭉치 AI 데이터 중 구어체 데이터 40만 개
