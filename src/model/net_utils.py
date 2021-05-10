@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,7 +22,7 @@ def attention(query, key, value, mask=None, dropout_fn=None):
     d_k = query.shape[-1]
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
-        scores.masked_fill_(mask, -float("inf"))
+        scores.masked_fill_(mask, -np.inf)
     p_attn = F.softmax(scores, dim=-1)
 
     if dropout_fn is not None:

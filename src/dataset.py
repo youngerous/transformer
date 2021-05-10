@@ -30,12 +30,12 @@ class TranslationDataset(Dataset):
         assert mode in ["train", "valid", "test"]
         self.max_len = max_len
         self.pad_idx = tok.pad_token_id
-        self.eos_idx = tok.sep_token_id  # [SEP] means <eos> in this implementation
+        self.eos_idx = tok.sep_token_id  # [SEP] means </s> in this implementation
 
         self.dset = []
         with open(cached_path, "r", encoding="utf-8") as f:
             jsonl = list(f)
-        for json_str in jsonl:
+        for idx, json_str in enumerate(jsonl):
             self.dset.append(json.loads(json_str))
         print(f"Load {len(self.dset)} {mode} sample")
 
@@ -44,7 +44,7 @@ class TranslationDataset(Dataset):
         if diff > 0:
             indice += [self.pad_idx] * diff
         else:
-            indice = indice[: self.max_len - 1] + [self.eos_idx]
+            indice = indice[: self.max_len]
         return torch.tensor(indice)
 
     def add_tgt_pad(self, indice: List[int]) -> Tuple[torch.Tensor]:
@@ -61,7 +61,7 @@ class TranslationDataset(Dataset):
         if input_diff > 0:
             t_input += [self.pad_idx] * input_diff
         else:
-            t_input = t_input[: self.max_len - 1] + [self.eos_idx]
+            t_input = t_input[: self.max_len]
 
         # pad for tgt label
         label_diff = self.max_len - len(t_label)
@@ -73,12 +73,12 @@ class TranslationDataset(Dataset):
         return torch.tensor(t_input), torch.tensor(t_label)
 
     def get_src_mask(self, indice: torch.Tensor) -> torch.Tensor:
-        return (indice != self.pad_idx).unsqueeze(-2)
+        return (indice == self.pad_idx).unsqueeze(-2)
 
     def get_tgt_mask(self, indice: torch.Tensor) -> torch.Tensor:
         mask = (indice != self.pad_idx).unsqueeze(-2)
         mask = mask & self.subsequent_mask(indice.shape[-1]).type_as(mask.data)
-        return mask
+        return ~mask
 
     def subsequent_mask(self, size) -> torch.Tensor:
         attn_shape = (1, size, size)

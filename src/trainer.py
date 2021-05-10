@@ -42,7 +42,7 @@ class Trainer:
         self.gradient_accumulation_step = self.hparams.gradient_accumulation_step
 
         # dataloader and distributed sampler
-        self.train_loader, self.valid_loader, self.test_loader = loaders
+        self.train_loader, self.valid_loader = loaders
         self.train_sampler = self.train_loader.sampler
 
         # optimizer, scheduler
@@ -90,7 +90,7 @@ class Trainer:
                 filename=os.path.join(self.save_path, "experiment.log"),
                 level=logging.INFO,
                 format="%(asctime)s > %(message)s",
-                datefmt="%Y-%m-%d %I:%M:%S %p %Z",
+                datefmt="%Y-%m-%d %H:%M:%S %Z",
             )
             logging.info(
                 f"[SCHEDULER] Total_step: {self.step_total} | Warmup step: {self.warmup_steps} | Accumulation step: {self.gradient_accumulation_step}"
@@ -177,7 +177,7 @@ class Trainer:
                 tgt_mask: [batch_size, 1, max_len, max_len]
             """
             src, tgt_input, tgt_label, src_mask, tgt_mask = map(
-                lambda x: x.to(self.device), batch
+                lambda x: x.to(self.device, non_blocking=True), batch
             )
 
             # compute loss
@@ -232,7 +232,7 @@ class Trainer:
                         "loss/step", {"val": val_loss}, self.global_step
                     )
                     logging.info(
-                        f"[VAL] global step: {self.global_step} | val loss: {val_loss:.3f}"
+                        f"[VAL] global step: {self.global_step} | val loss: {val_loss:.4f}"
                     )
                     if val_loss < self.global_val_loss:
                         self.save_checkpoint(epoch, val_loss, self.model)
@@ -264,7 +264,7 @@ class Trainer:
             disable=not self.main_process,
         ):
             src, tgt_input, tgt_label, src_mask, tgt_mask = map(
-                lambda x: x.to(self.device), batch
+                lambda x: x.to(self.device, non_blocking=True), batch
             )
 
             # compute loss
@@ -278,20 +278,21 @@ class Trainer:
         return val_loss.avg
 
     @torch.no_grad()
-    def test(self, state_dict) -> dict:
+    def test(self, test_loader, state_dict) -> dict:
         test_loss = AverageMeter()
 
         self.model.load_state_dict(state_dict)
         self.model.eval()
         for step, batch in tqdm(
-            enumerate(self.test_loader), desc="tst_steps", total=len(self.test_loader)
+            enumerate(test_loader), desc="tst_steps", total=len(test_loader)
         ):
             src, tgt_input, tgt_label, src_mask, tgt_mask = map(
-                lambda x: x.to(self.device), batch
+                lambda x: x.to(self.device, non_blocking=True), batch
             )
 
-            # compute loss
-            logit = self.model(src, tgt_input, src_mask, tgt_mask)
+            # compute loss (should use '.module' here when using ddp)
+            # https://discuss.pytorch.org/t/torch-distributed-barrier-hangs-in-ddp/114522/8
+            logit = self.model.module(src, tgt_input, src_mask, tgt_mask)
             loss = self.criterion(
                 logit.contiguous().view(-1, logit.shape[-1]),
                 tgt_label.contiguous().view(-1),

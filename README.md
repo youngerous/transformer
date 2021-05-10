@@ -1,7 +1,7 @@
 # Transformer
 This is PyTorch implementation of [Attention is All You Need](https://arxiv.org/abs/1706.03762) (NeurIPS 2017). 
 
-## Overview
+## 0. Overview
 <img src="assets/architecture.png" width="50%" height="50%">
 
 - Task: Neural Machine Translation (Korean → English)
@@ -15,7 +15,7 @@ This is PyTorch implementation of [Attention is All You Need](https://arxiv.org/
 
 - For tokenizing, I used [huggingface's multilingual BERT tokenizer](https://huggingface.co/transformers/multilingual.html).
 
-## Data Structure
+## 1. Data Structure
 ```sh
 src/
   └─ data/
@@ -30,15 +30,40 @@ src/
     └─ test_60000.csv
 ```
 
-## Environment
+## 2. Environment
 All dependencies are written in [requirements.txt](https://github.com/youngerous/transformer/blob/main/requirements.txt), and you can also access through [Dockerfile](https://github.com/youngerous/transformer/blob/main/Dockerfile).
 
-## How to Run
+## 3. How to Run
+
+**Note**: In this implementation, ```[CLS]```, ```[SEP]``` tokens mean ```<s>``` and ```</s>``` respectively.
+
+### Train
 ```sh
 sh run.sh
 ```
 
-## Reference
+### Inference
+```sh
+python src/translate.py --source TEXT_TO_TRANSLATE --ckpt-path CHECKPOINT_TO_LOAD
+```
+
+## 4. Translation Results
+These samples are from checkpoint with hyperparameters in ```run.sh``` file.
+
+```markdown
+- Source:   
+- Translated:  
+```
+```markdown
+- Source: 
+- Translated:
+```
+```markdown
+- Source: 
+- Translated:
+```
+
+## 5. Reference
 - [[Tutorial] The Annotated Transformer :: Harvard NLP](https://nlp.seas.harvard.edu/2018/04/03/attention.html)
 - [[Tutorial] nlp-tutorial :: graykode](https://github.com/graykode/nlp-tutorial)
-- [[Dataset] 한국어-영어 번역(병렬) 말뭉치 AI 데이터 :: AiHub](https://aihub.or.kr/aidata/87)
+- [[Dataset] 한국어-영어 번역(병렬) 말뭉치 AI 데이터 :: AIHub](https://aihub.or.kr/aidata/87)

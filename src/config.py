@@ -18,13 +18,13 @@ def load_config():
         help="Evaluation will be done at the end of epoch if set to 0.0",
     )
     parser.add_argument(
-        "--distributed", action="store_true", default=False, help="Whether to use ddp"
-    )
-    parser.add_argument(
         "--amp", action="store_true", default=False, help="PyTorch(>=1.6.x) AMP"
     )
 
     # ddp hparams
+    parser.add_argument(
+        "--distributed", action="store_true", default=False, help="Whether to use ddp"
+    )
     parser.add_argument("--dist-backend", type=str, default="nccl")
     parser.add_argument("--dist-url", default="tcp://127.0.0.1:3456", type=str)
     parser.add_argument(

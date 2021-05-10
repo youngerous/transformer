@@ -3,7 +3,7 @@
 # Note: not same as paper settings
 BATCH_SIZE=2
 LR=5e-5
-EPOCH=5
+EPOCH=10
 ACCUMULATION_STEP=2
 
 DROPOUT=0.1
@@ -27,6 +27,3 @@ python src/main.py\
     --amp\
     --distributed\
     
-
-
-

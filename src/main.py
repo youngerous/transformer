@@ -48,7 +48,7 @@ def main(rank, hparams, ngpus_per_node: int):
             mode=mode,
             distributed=hparams.distributed,
         )
-        for mode in ["train", "valid", "test"]
+        for mode in ["train", "valid"]
     ]
 
     # get model and initialize
@@ -75,9 +75,17 @@ def main(rank, hparams, ngpus_per_node: int):
         state_dict = torch.load(
             glob.glob(
                 os.path.join(hparams.ckpt_path, f"version-{version}/best_model_*.pt")
-            )[0]
+            )[0],
         )
-        test_result = trainer.test(state_dict)
+        test_loader = get_loader(
+            tok=tok,
+            batch_size=hparams.batch_size,
+            root_path=hparams.root_path,
+            workers=hparams.workers,
+            max_len=hparams.max_len,
+            mode="test",
+        )
+        test_result = trainer.test(test_loader, state_dict)
 
         # save result
         best_result.update(test_result)
