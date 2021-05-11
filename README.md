@@ -56,7 +56,7 @@ These samples are from checkpoint with hyperparameters in ```run.sh``` file(trai
 
 ```markdown
 - Source: 오늘 커피 한 잔 할래요?
-- Translated: Would you like to have a cop of coffee today?
+- Translated: Would you like to have a cup of coffee today?
 ```
 ```markdown
 - Source: 나 오늘 늦게 퇴근해
