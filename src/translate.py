@@ -91,10 +91,10 @@ if __name__ == "__main__":
     parser.add_argument("--source", type=str, help="Input sequence to translate")
     # parser.add_argument("--ckpt-path", type=str, help="Checkpoint path to decode")
     parser.add_argument(
-        "--ckpt-path",
+        "--ckpt-path",  # TODO:
         type=str,
         help="Checkpoint path to decode",
-        default="src/checkpoints/version-3/best_model_step_108374_loss_3.6107.pt",
+        default="./checkpoints/version-3/best_model_step_361249_loss_2.5004.pt",
     )
 
     parser.add_argument("--n-enc-block", type=int, default=6)

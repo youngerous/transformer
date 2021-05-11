@@ -161,7 +161,6 @@ class Trainer:
     def _train_epoch(self, epoch: int) -> None:
         train_loss = AverageMeter()
 
-        self.model.train()
         for step, batch in tqdm(
             enumerate(self.train_loader),
             desc="trn_steps",
@@ -176,6 +175,7 @@ class Trainer:
                 src_mask: [batch_size, 1, max_len]
                 tgt_mask: [batch_size, 1, max_len, max_len]
             """
+            self.model.train()
             src, tgt_input, tgt_label, src_mask, tgt_mask = map(
                 lambda x: x.to(self.device, non_blocking=True), batch
             )

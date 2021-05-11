@@ -31,11 +31,15 @@ src/
 ```
 
 ## 2. Environment
+
+- torch==1.7.1
+- transformers=4.5.1
+
 All dependencies are written in [requirements.txt](https://github.com/youngerous/transformer/blob/main/requirements.txt), and you can also access through [Dockerfile](https://github.com/youngerous/transformer/blob/main/Dockerfile).
 
 ## 3. How to Run
 
-**Note**: In this implementation, ```[CLS]```, ```[SEP]``` tokens mean ```<s>``` and ```</s>``` respectively.
+**Note**: In this implementation, ```[CLS]``` and ```[SEP]``` tokens mean ```<s>``` and ```</s>``` respectively.
 
 ### Train
 ```sh
@@ -44,23 +48,23 @@ sh run.sh
 
 ### Inference
 ```sh
-python src/translate.py --source TEXT_TO_TRANSLATE --ckpt-path CHECKPOINT_TO_LOAD
+python src/translate.py --source "KOREAN_TEXT_TO_TRANSLATE" --ckpt-path "CHECKPOINT_TO_LOAD"
 ```
 
 ## 4. Translation Results
-These samples are from checkpoint with hyperparameters in ```run.sh``` file.
+These samples are from checkpoint with hyperparameters in ```run.sh``` file(trained about 360k steps).
 
 ```markdown
-- Source:   
-- Translated:  
+- Source: 오늘 커피 한 잔 할래요?
+- Translated: Would you like to have a cop of coffee today?
 ```
 ```markdown
-- Source: 
-- Translated:
+- Source: 나 오늘 늦게 퇴근해
+- Translated: I'm going to work late today.
 ```
 ```markdown
-- Source: 
-- Translated:
+- Source: 번역이 정말 잘 되네요!
+- Translated: It's a great translation.
 ```
 
 ## 5. Reference
